@@ -23,3 +23,8 @@ cp /usr/local/src/php7-build/php-7.1.0/php.ini-production /opt/php-7.1/lib/php.i
 
 cp /opt/php-7.1/etc/php-fpm.conf.default /opt/php-7.1/etc/php-fpm.conf
 cp /opt/php-7.1/etc/php-fpm.d/www.conf.default /opt/php-7.1/etc/php-fpm.d/www.conf
+
+chmod 755 /etc/init.d/php-7.1-fpm
+insserv php-7.1-fpm
+
+/etc/init.d/php-7.1-fpm start
