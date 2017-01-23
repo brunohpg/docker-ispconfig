@@ -223,6 +223,8 @@ RUN sed -i 's/^NameVirtualHost/#NameVirtualHost/g' /etc/apache2/sites-enabled/00
 # CLEANING
 RUN apt-get autoremove -y && apt-get clean && rm -rf /tmp/*
 
+RUN cp installPhp7.sh /var/ww
+
 EXPOSE 20/tcp 21/tcp 22/tcp 53 80/tcp 443/tcp 953/tcp 8080/tcp 3306 9001/tcp
 
 VOLUME ["/var/www/","/var/mail/","/var/backups/","/var/lib/mysql","/etc/","/usr/local/ispconfig","/var/log/"]
