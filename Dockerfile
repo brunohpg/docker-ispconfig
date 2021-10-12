@@ -18,7 +18,7 @@
 # https://www.howtoforge.com/tutorial/perfect-server-debian-8-4-jessie-apache-bind-dovecot-ispconfig-3-1
 #
 
-FROM debian:jessie
+FROM debian:11
 
 MAINTAINER Loïs PUIG <lois.puig@kctus.fr> version: 0.1
 
@@ -26,8 +26,8 @@ MAINTAINER Loïs PUIG <lois.puig@kctus.fr> version: 0.1
 ENV DEBIAN_FRONTEND="noninteractive"
 
 ARG	FQDN="ispconfig.docker"
-ARG	LOCALE="en_US"
-ARG	TIMEZONE="UTC"
+ARG	LOCALE="pt_BR"
+ARG	TIMEZONE="America/Sao_Paulo"
 ARG	MYSQL_ROOT_PWD="password"
 ARG	PHPMYADMIN_PWD="password"
 ARG	MAILMAN_EMAIL=""
@@ -40,6 +40,8 @@ ARG	SSLCERT_STATE="New York"
 ARG	SSLCERT_COUNTRY="US"
 ARG	SUPERVISOR_LOGIN="root"
 ARG	SUPERVISOR_PWD="password"
+
+RUN apt-get -y -qq update && apt-get -y -qq upgrade && apt-get install -y nano git procps
 
 # --- 0.1 Bash
 COPY ./fs/root/.bash_aliases /root/.bash_aliases
@@ -59,22 +61,27 @@ RUN mv /bin/systemctl /bin/systemctloriginal
 ADD ./fs/bin/systemctl /bin/systemctl
 
 # --- 0.3 locales
-RUN apt-get update && apt-get install -y locales && rm -rf /var/lib/apt/lists/* \
-    && localedef -i ${LOCALE} -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+RUN apt-get -y -qq update && apt-get install -y locales && \
+    localedef -i ${LOCALE} -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 #ENV LANG ${LOCALE}.utf8
 #RUN apt-get -y -qq update && apt-get -y -qq install locales
 #RUN sed -i "s|# \(.*${LOCALE}.*\)|\1|" /etc/locale.gen
 #RUN locale-gen && dpkg-reconfigure locales
 
 # --- 1 Preliminary
-RUN apt-get -y -qq update && apt-get -y -qq install apt-utils && apt-get -y -qq upgrade
+RUN apt-get -y -qq update && apt-get -y -qq install apt-utils
+
+# WARNING: next command reading from stdin
 RUN echo "${TIMEZONE}" > /etc/timezone && dpkg-reconfigure tzdata
-RUN apt-get -y -qq update && apt-get -y -qq install rsyslog rsyslog-relp logrotate wget curl python-pip screenfetch && pip install supervisor
+
+RUN apt-get -y -qq update && apt-get -y -qq install rsyslog rsyslog-relp logrotate wget curl python3-pip screenfetch && pip install supervisor
 # Create the log file to be able to run tail
 RUN touch /var/log/cron.log /var/log/auth.log
 
 # --- 2 Install the SSH server
-RUN apt-get -qq update && apt-get -y -qq install ssh openssh-server rsync && \
+
+# WARN: next line try install rsync service
+RUN apt-get -y -qq update && apt-get -y -qq install ssh openssh-server rsync && \
     mkdir /root/.ssh && touch /root/.ssh/authorized_keys
 RUN sed -i 's/^#AuthorizedKeysFile/AuthorizedKeysFile/g' /etc/ssh/sshd_config
 
@@ -82,11 +89,13 @@ RUN sed -i 's/^#AuthorizedKeysFile/AuthorizedKeysFile/g' /etc/ssh/sshd_config
 RUN apt-get -qq update && apt-get -y -qq install nano vim-nox
 
 # --- 5 Update Your Debian Installation
-ADD ./fs/etc/apt/sources.list /etc/apt/sources.list
-RUN apt-get -y -qq update && apt-get -y -qq upgrade
+#ADD ./fs/etc/apt/sources.list /etc/apt/sources.list
+#RUN apt-get -y -qq update && apt-get -y -qq upgrade
 
 # --- 6 Change The Default Shell
 RUN echo "dash  dash/sh boolean no" | debconf-set-selections
+
+# WARN: reconfigure ask from stdin
 RUN dpkg-reconfigure dash
 
 # --- 7 Synchronize the System Clock
@@ -97,12 +106,16 @@ RUN echo "mariadb-server  mariadb-server/root_password_again password ${MYSQL_RO
 RUN echo "mariadb-server  mariadb-server/root_password password ${MYSQL_ROOT_PWD}" | debconf-set-selections
 RUN echo "mariadb-server-10.0 mysql-server/root_password password ${MYSQL_ROOT_PWD}" | debconf-set-selections
 RUN echo "mariadb-server-10.0 mysql-server/root_password_again password ${MYSQL_ROOT_PWD}" | debconf-set-selections
-RUN apt-get -qq update && apt-get -qq -y --force-yes install postfix postfix-mysql postfix-doc mariadb-client mariadb-server openssl getmail4 rkhunter binutils dovecot-imapd dovecot-pop3d dovecot-mysql dovecot-sieve dovecot-lmtpd sudo
+
+# WARN: postfix will ask from stdin
+# WARN: some service is trying to install
+
+RUN apt-get -qq update && apt-get -qq -y install getmail postfix postfix-mysql postfix-doc mariadb-client mariadb-server openssl rkhunter binutils dovecot-imapd dovecot-pop3d dovecot-mysql dovecot-sieve dovecot-lmtpd sudo
 ADD ./fs/etc/postfix/master.cf /etc/postfix/master.cf
 RUN sed -i 's/^bind-address/#bind-address/g' /etc/mysql/my.cnf
 # Directory for dump SQL backup
 RUN mkdir -p /var/backups/sql
-RUN service postfix restart && service mysql restart
+RUN service postfix restart && service mariadb restart
 
 # --- 9 Install Amavisd-new, SpamAssassin And Clamav
 RUN apt-get -qq update && apt-get -y -qq install amavisd-new spamassassin clamav clamav-daemon zoo unzip bzip2 arj nomarch lzop cabextract apt-listchanges libnet-ldap-perl libauthen-sasl-perl clamav-docs daemon libio-string-perl libio-socket-ssl-perl libnet-ident-perl zip libnet-dns-perl postgrey
