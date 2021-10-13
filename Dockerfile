@@ -118,6 +118,10 @@ RUN mkdir -p /var/backups/sql
 RUN service postfix restart && service mariadb restart
 
 # --- 9 Install Amavisd-new, SpamAssassin And Clamav
+
+# WARN: package zoo not found
+@ WARN: trying to install services
+
 RUN apt-get -qq update && apt-get -y -qq install amavisd-new spamassassin clamav clamav-daemon zoo unzip bzip2 arj nomarch lzop cabextract apt-listchanges libnet-ldap-perl libauthen-sasl-perl clamav-docs daemon libio-string-perl libio-socket-ssl-perl libnet-ident-perl zip libnet-dns-perl postgrey
 ADD ./fs/etc/clamav/clamd.conf /etc/clamav/clamd.conf
 ADD ./fs/etc/clamav/freshclam.conf /etc/clamav/freshclam.conf
@@ -127,34 +131,64 @@ RUN mkdir -p /var/run/clamav && chown -R clamav: /var/run/clamav
 RUN service spamassassin stop && systemctl disable spamassassin &>/dev/null && freshclam
 
 # --- 9.1 Install Metronome XMPP Server
-RUN echo "deb http://packages.prosody.im/debian jessie main" > /etc/apt/sources.list.d/metronome.list
-RUN wget http://prosody.im/files/prosody-debian-packages.key -O - | apt-key add -
+RUN echo "deb http://packages.prosody.im/debian $(lsb_release -sc) main" > /etc/apt/sources.list.d/metronome.list
+RUN wget https://prosody.im/files/prosody-debian-packages.key -O- | apt-key add -
+
 RUN apt-get -qq update && apt-get -y -qq install git lua5.1 liblua5.1-0-dev lua-filesystem libidn11-dev libssl-dev lua-zlib lua-expat lua-event lua-bitop lua-socket lua-sec luarocks luarocks
 RUN luarocks install lpc
 RUN adduser --no-create-home --disabled-login --gecos 'Metronome' metronome
-RUN cd /opt && git clone https://github.com/maranda/metronome.git metronome
-RUN cd /opt/metronome && ./configure --ostype=debian --prefix=/usr && make && make install
 
-# --- 10 Install Apache2, PHP5, phpMyAdmin, FCGI, suExec, Pear, And mcrypt
+RUN wget https://github.com/maranda/metronome/archive/refs/tags/v3.14.4.zip && unzip v3.14.4.zip -d /opt/
+#RUN cd /opt && git clone https://github.com/maranda/metronome.git metronome
+RUN cd /opt/metronome-3.14.4/ && ./configure --ostype=debian --prefix=/usr && make && make install
+
+# --- 10 Install Apache2, PHP7, phpMyAdmin, FCGI, suExec, Pear, And mcrypt
 RUN echo 'phpmyadmin phpmyadmin/dbconfig-install boolean true' | debconf-set-selections
 RUN echo 'phpmyadmin phpmyadmin/mysql/admin-pass password pass' | debconf-set-selections
 RUN echo 'phpmyadmin phpmyadmin/reconfigure-webserver multiselect apache2' | debconf-set-selections
-RUN service mysql restart
-RUN echo $(grep $(hostname) /etc/hosts | cut -f1) ${FQDN} >> /etc/hosts && apt-get -qq update && apt-get -y -qq install apache2 apache2.2-common apache2-doc apache2-mpm-prefork apache2-utils libexpat1 ssl-cert libapache2-mod-php5 php5 php5-common php5-gd php5-mysql php5-imap phpmyadmin php5-cli php5-cgi libapache2-mod-fcgid apache2-suexec php-pear php-auth php5-mcrypt mcrypt php5-imagick imagemagick libruby libapache2-mod-python php5-curl php5-intl php5-memcache php5-memcached php5-pspell php5-recode php5-sqlite php5-tidy php5-xmlrpc php5-xsl memcached libapache2-mod-passenger
+RUN service mariadb restart
+
+# WARN: apache2 need servername in /etc/apache2/conf-enabled/servername.conf
+
+# WARN: apache2-mpm-prefork not found
+# WARN: apache2-suexec not found, replaced to apache2-suexec-pristine
+# WARN: php-auth not found, aparentely it's in php-common
+# WARN: php7.4-mcrypt not found, removed mcrypt also. mcrypt is not maintained anymore
+# WARN: php7.4-recode not found
+# WARN: phpmyadmin ask from stdin
+
+RUN echo $(grep $(hostname) /etc/hosts | cut -f1) ${FQDN} >> /etc/hosts && apt-get -qq update && \
+    apt-get -y install apache2 apache2-doc apache2-utils libexpat1 ssl-cert \
+    libapache2-mod-php7.4 php7.4-gd php7.4-mysql php7.4-imap php7.4 php7.4-common \
+    phpmyadmin php7.4-cli php7.4-cgi libapache2-mod-fcgid php-pear \
+    php-imagick imagemagick libruby libapache2-mod-python php7.4-curl \
+    php7.4-intl php-memcached php-memcache php7.4-pspell php7.4-sqlite3 php7.4-tidy \
+    php7.4-xmlrpc php7.4-xsl memcached libapache2-mod-passenger \
+    apache2-suexec-pristine
+
 RUN echo "ServerName ${FQDN}" > /etc/apache2/conf-available/servername.conf && a2enconf servername
 COPY ./fs/etc/apache2/conf-available/httpoxy.conf /etc/apache2/conf-available/httpoxy.conf
 RUN a2enmod suexec rewrite ssl actions include dav_fs dav auth_digest cgi headers && a2enconf httpoxy && a2dissite 000-default && service apache2 restart
 
 # --- 10.1 Install HHVM (HipHop Virtual Machine)
-RUN apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0x5a16e7281be7a449
-RUN echo deb http://dl.hhvm.com/debian jessie main | tee /etc/apt/sources.list.d/hhvm.list
-RUN apt-get -qq update && apt-get -y -qq install hhvm
+
+# WARN: not for arm64
+
+RUN apt-get -qq update && apt-get install -y apt-transport-https software-properties-common && \
+    apt-key adv --recv-keys --keyserver hkp://keyserver.ubuntu.com:80 0xB4112585D386EB94 && \
+    add-apt-repository https://dl.hhvm.com/debian && \
+    apt-get -qq update && apt-get -y -qq install hhvm
 
 # --- 11 Install Let's Encrypt client (certbot)
+# WARN: don't work
+
 RUN apt-get -y install python-certbot-apache -t jessie-backports
 
 # --- 12.1 PHP-FPM
-RUN apt-get -qq update && apt-get -y -qq install libapache2-mod-fastcgi php5-fpm
+
+# WARN: libapache2-mod-fastcgi not found
+
+RUN apt-get -qq update && apt-get -y -qq install php7.4-fpm
 RUN a2enmod actions fastcgi alias && service apache2 restart
 
 # --- 12.2 Install XCache
